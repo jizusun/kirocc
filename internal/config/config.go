@@ -60,8 +60,8 @@ type Config struct {
 	MaxRequestBody int64
 	LogFile        logging.LogFileConfig
 	// WebSearch configures in-proxy emulation of Anthropic's web_search tool.
-	// Disabled unless a provider is named: the queries leave this machine for a
-	// third-party search API, so it is opt-in.
+	// Disabled unless a provider is named because searches send queries outside
+	// kirocc, either through a search API or Kiro CLI.
 	WebSearch websearch.Config
 }
 

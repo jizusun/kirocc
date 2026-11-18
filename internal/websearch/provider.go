@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -15,19 +16,24 @@ import (
 
 // Provider identifiers accepted by Config.Provider.
 const (
-	ProviderBrave  = "brave"
-	ProviderTavily = "tavily"
-	ProviderExa    = "exa"
-	ProviderCustom = "custom"
+	ProviderBrave   = "brave"
+	ProviderTavily  = "tavily"
+	ProviderExa     = "exa"
+	ProviderCustom  = "custom"
+	ProviderKiroCLI = "kiro-cli"
 )
 
 // Providers lists the identifiers New accepts, for flag help and validation
 // messages.
-var Providers = []string{ProviderBrave, ProviderTavily, ProviderExa, ProviderCustom}
+var Providers = []string{ProviderBrave, ProviderTavily, ProviderExa, ProviderCustom, ProviderKiroCLI}
 
 // DefaultTimeout bounds one provider call. A search the executor model is
 // waiting on must fail fast rather than hold the stream open.
 const DefaultTimeout = 15 * time.Second
+
+// DefaultKiroCLITimeout bounds a native CLI search, which starts a headless
+// agent session and is slower than a direct search API request.
+const DefaultKiroCLITimeout = 60 * time.Second
 
 // maxBodyBytes bounds a provider response. Generous for a result list, and a
 // hard stop on a provider that streams something unexpected.
@@ -53,11 +59,15 @@ var defaultEndpoints = endpoints{
 type Config struct {
 	Provider string
 	APIKey   string
+	// KiroAPIKey and KiroAPIRegion are passed to kiro-cli when its native
+	// web-search tool is selected. Empty values leave the CLI environment alone.
+	KiroAPIKey    string
+	KiroAPIRegion string
 	// URL is the endpoint for the custom provider, ignored by the others.
 	URL string
 	// MaxResults caps results per search; 0 means DefaultMaxResults.
 	MaxResults int
-	// Timeout bounds one provider call; 0 means DefaultTimeout.
+	// Timeout bounds one provider call; 0 selects a provider-specific default.
 	Timeout time.Duration
 }
 
@@ -75,6 +85,7 @@ func (c Config) Validate() error {
 		if c.APIKey == "" {
 			return fmt.Errorf("web-search-api-key is required for provider %q", c.Provider)
 		}
+	case ProviderKiroCLI:
 	case ProviderCustom:
 		if c.URL == "" {
 			return fmt.Errorf("web-search-url is required for provider %q", c.Provider)
@@ -89,6 +100,9 @@ func (c Config) Validate() error {
 	}
 	if c.MaxResults < 0 {
 		return fmt.Errorf("web-search-max-results must be >= 0, got %d", c.MaxResults)
+	}
+	if c.Timeout < 0 {
+		return fmt.Errorf("web-search-timeout must be >= 0, got %s", c.Timeout)
 	}
 	return nil
 }
@@ -105,6 +119,21 @@ func New(cfg Config) (Provider, error) {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = DefaultTimeout
+	}
+	if cfg.Provider == ProviderKiroCLI {
+		path, err := exec.LookPath("kiro-cli")
+		if err != nil {
+			return nil, fmt.Errorf("web-search-provider kiro-cli requires kiro-cli in PATH: %w", err)
+		}
+		if cfg.Timeout <= 0 {
+			timeout = DefaultKiroCLITimeout
+		}
+		return &kiroCLIProvider{
+			path:    path,
+			timeout: timeout,
+			apiKey:  cfg.KiroAPIKey,
+			region:  cfg.KiroAPIRegion,
+		}, nil
 	}
 	p := &httpProvider{
 		name:   cfg.Provider,

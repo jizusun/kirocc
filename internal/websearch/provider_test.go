@@ -224,8 +224,10 @@ func TestConfigValidate(t *testing.T) {
 		{"custom with url", Config{Provider: "custom", URL: "https://search.internal/api"}, ""},
 		{"custom without url", Config{Provider: "custom"}, "web-search-url"},
 		{"custom with bad url", Config{Provider: "custom", URL: "search.internal"}, "http(s) URL"},
+		{"Kiro CLI native search", Config{Provider: ProviderKiroCLI}, ""},
 		{"unknown provider", Config{Provider: "googol", APIKey: "k"}, "unknown web-search-provider"},
 		{"negative max results", Config{Provider: "brave", APIKey: "k", MaxResults: -1}, "web-search-max-results"},
+		{"negative timeout", Config{Provider: "kiro-cli", Timeout: -1}, "web-search-timeout"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

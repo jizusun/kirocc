@@ -75,14 +75,14 @@ func (s *Service) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	// orchestrator, which has its own retry loop.
 	tsCtx, advCtx, wsCtx := s.newServerToolContexts(req)
 	// A web_search definition with no provider configured cannot be honoured:
-	// Kiro has no web search, and forwarding the definition as a callable tool
-	// returns a tool_use block the client discards — the search silently
-	// reports no results. Refusing says so instead.
+	// the Kiro API does not implement Anthropic's server-side web-search
+	// contract, and forwarding it as a callable tool returns a tool_use block
+	// the client discards. Refusing says so instead.
 	if wsCtx == nil && anthropic.FindWebSearchTool(req.Tools) != nil {
 		slog.WarnContext(ctx, "web search requested but no provider is configured", "trace_id", short)
 		httpx.WriteError(w, http.StatusBadRequest, errTypeInvalidRequest,
-			"web_search_20250305 is not supported: Kiro has no web search capability. "+
-				"Start kirocc with -web-search-provider to run searches in-proxy, "+
+			"web_search_20250305 requires a web-search provider. "+
+				"Start kirocc with -web-search-provider (for example, kiro-cli), "+
 				"or take the tool out of the request (claude --disallowedTools WebSearch).")
 		return
 	}

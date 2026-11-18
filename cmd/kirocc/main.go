@@ -77,6 +77,8 @@ func run(ctx context.Context, args []string) error {
 	}
 	// Built before the listener so a bad provider or missing key is a startup
 	// error rather than a failed search mid-session.
+	cfg.WebSearch.KiroAPIKey = cfg.KiroAPIKey
+	cfg.WebSearch.KiroAPIRegion = cfg.KiroAPIRegion
 	webSearch, err := websearch.New(cfg.WebSearch)
 	if err != nil {
 		return fmt.Errorf("web search: %w", err)
@@ -135,11 +137,13 @@ func parseFlags(args []string) (config.Config, error) {
 	fs.StringVar(&cfg.WebSearch.Provider, "web-search-provider", "",
 		"run Claude Code's WebSearch in-proxy via this search API ("+strings.Join(websearch.Providers, "|")+"); empty disables it; also KIROCC_WEB_SEARCH_PROVIDER")
 	fs.StringVar(&cfg.WebSearch.APIKey, "web-search-api-key", "",
-		"API key for -web-search-provider; also KIROCC_WEB_SEARCH_API_KEY")
+		"API key for brave, tavily, exa or custom search providers; also KIROCC_WEB_SEARCH_API_KEY")
 	fs.StringVar(&cfg.WebSearch.URL, "web-search-url", "",
 		"endpoint for -web-search-provider custom: POST {\"q\":…} answering {\"results\":[…]}; also KIROCC_WEB_SEARCH_URL")
 	fs.IntVar(&cfg.WebSearch.MaxResults, "web-search-max-results", websearch.DefaultMaxResults,
 		"results per search; also KIROCC_WEB_SEARCH_MAX_RESULTS")
+	fs.DurationVar(&cfg.WebSearch.Timeout, "web-search-timeout", 0,
+		"max wait for search provider; also KIROCC_WEB_SEARCH_TIMEOUT")
 	fs.BoolVar(&cfg.Debug, "debug", false, "enable debug logging with OTel JSON Lines output")
 	fs.BoolVar(&cfg.OTel, "otel", false, "enable OpenTelemetry tracing (OTLP HTTP exporter)")
 	fs.IntVar(&cfg.OTelBodyLimit, "otel-body-limit", config.DefaultOTelBodyLimit, "max bytes of request body to capture in OTel spans (0 = unlimited)")
