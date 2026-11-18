@@ -33,8 +33,13 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		authHeader := r.Header.Get("Authorization")
-		token, ok := strings.CutPrefix(authHeader, "Bearer ")
+		// Accept "Authorization: Bearer <key>" (Claude Code) or
+		// "x-api-key: <key>" (the header the Anthropic SDKs send).
+		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !ok {
+			token = r.Header.Get("X-Api-Key")
+			ok = token != ""
+		}
 		if !ok || subtle.ConstantTimeCompare([]byte(token), []byte(s.apiKey)) != 1 {
 			httpx.WriteError(w, http.StatusUnauthorized, httpx.ErrTypeAuthentication, "invalid API key")
 			return

@@ -280,6 +280,56 @@ func TestAPIKeyAuth_Invalid(t *testing.T) {
 	}
 }
 
+func TestAPIKeyAuth_XAPIKeyValid(t *testing.T) {
+	srv := newTestServer(t, "secret", nil)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/v1/models", nil)
+	req.Header.Set("x-api-key", "secret")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestAPIKeyAuth_XAPIKeyInvalid(t *testing.T) {
+	srv := newTestServer(t, "secret", nil)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/v1/models", nil)
+	req.Header.Set("x-api-key", "wrong")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 401 {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+// A wrong Bearer token must not fall through to a valid x-api-key.
+func TestAPIKeyAuth_BearerTakesPrecedence(t *testing.T) {
+	srv := newTestServer(t, "secret", nil)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer wrong")
+	req.Header.Set("x-api-key", "secret")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 401 {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
 func TestAPIKeyAuth_SkippedForHealth(t *testing.T) {
 	srv := newTestServer(t, "secret", nil)
 	defer srv.Close()
