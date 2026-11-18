@@ -280,6 +280,56 @@ func TestAPIKeyAuth_Invalid(t *testing.T) {
 	}
 }
 
+func TestAPIKeyAuth_XAPIKeyValid(t *testing.T) {
+	srv := newTestServer(t, "secret", nil)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/v1/models", nil)
+	req.Header.Set("x-api-key", "secret")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestAPIKeyAuth_XAPIKeyInvalid(t *testing.T) {
+	srv := newTestServer(t, "secret", nil)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/v1/models", nil)
+	req.Header.Set("x-api-key", "wrong")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 401 {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+// A wrong Bearer token must not fall through to a valid x-api-key.
+func TestAPIKeyAuth_BearerTakesPrecedence(t *testing.T) {
+	srv := newTestServer(t, "secret", nil)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer wrong")
+	req.Header.Set("x-api-key", "secret")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 401 {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
 func TestAPIKeyAuth_SkippedForHealth(t *testing.T) {
 	srv := newTestServer(t, "secret", nil)
 	defer srv.Close()
@@ -510,6 +560,40 @@ func TestPostMessages_MethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestCORSAllowsAnthropicBrowserHeaders(t *testing.T) {
+	srv := newTestServer(t, "", nil)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("OPTIONS", srv.URL+"/models", nil)
+	req.Header.Set("Origin", "tauri://localhost")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	allowed := strings.ToLower(resp.Header.Get("Access-Control-Allow-Headers"))
+	for _, h := range []string{"x-api-key", "anthropic-version", "anthropic-dangerous-direct-browser-access"} {
+		if !strings.Contains(allowed, h) {
+			t.Errorf("Access-Control-Allow-Headers %q missing %q", allowed, h)
+		}
+	}
+}
+
+func TestGetModels_UnversionedAlias(t *testing.T) {
+	srv := newTestServer(t, "", nil)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 200 {
+		t.Fatalf("GET /models status = %d, want 200", resp.StatusCode)
+	}
+}
+
 func TestIsLocalhostOrigin(t *testing.T) {
 	tests := []struct {
 		origin string
@@ -528,6 +612,12 @@ func TestIsLocalhostOrigin(t *testing.T) {
 		// No port:
 		{"http://localhost", true},
 		{"http://127.0.0.1", true},
+		// Tauri webviews:
+		{"tauri://localhost", true},
+		{"http://tauri.localhost", true},
+		{"https://tauri.localhost", true},
+		{"http://tauri.localhost.evil.com", false},
+		{"http://evil-tauri.localhost", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.origin, func(t *testing.T) {

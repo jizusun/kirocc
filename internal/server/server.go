@@ -95,4 +95,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /v1/models", s.handleModels)
 	s.mux.HandleFunc("POST /v1/messages/count_tokens", s.messages.HandleCountTokens)
 	s.mux.HandleFunc("POST /v1/messages", s.messages.HandleMessages)
+	// GET /models without the /v1 prefix, for clients that append /models
+	// straight to the base URL (e.g. ReadAny's model list).
+	s.mux.HandleFunc("GET /models", s.handleModels)
 }
