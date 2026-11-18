@@ -16,7 +16,7 @@ Just set `ANTHROPIC_BASE_URL` from any Anthropic API client (e.g., Claude Code) 
 - **Custom API region** — Pin the region in `runtime.<region>.kiro.dev` with `-kiro-api-region`, for accounts whose stored credential region is not one Kiro serves
 - **Extended Thinking** — Enable via the `[1m]` suffix, the `thinking` field, or `output_config.effort`. Reasoning depth travels natively as `additionalModelRequestFields.output_config.effort` (validated against each model's enum; defaults to `medium` for effort-capable models when thinking is on without an explicit effort)
 - **Tool Search** — Proxy-side implementation of Anthropic's [Tool Search Tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool). Supports `tool_search_tool_regex_20251119` and `tool_search_tool_bm25_20251119` with `defer_loading` for on-demand tool discovery
-- **Web Search** — Opt-in proxy-side implementation of Anthropic's [web search tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool) (`web_search_20250305`), which Claude Code's `WebSearch` uses. Kiro has no web search, so the search runs here against Brave, Tavily, Exa or your own endpoint (`-web-search-provider`). Without a provider a request carrying the tool is refused rather than answered without the search
+- **Web Search** — Opt-in proxy-side implementation of Anthropic's [web search tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool) (`web_search_20250305`), which Claude Code's `WebSearch` uses. Select Kiro CLI's native search with `-web-search-provider kiro-cli`, or use Brave, Tavily, Exa or your own endpoint. Without a provider a request carrying the tool is refused rather than answered without the search
 - **Prompt Caching** — Converts Anthropic tool-level `cache_control` to Kiro `cachePoint`
 - **Truncation detection** — Automatically injects a notice into the next request when a response is truncated
 - **Retry** — Exponential backoff retry for 403 (token expiry), 429, and 5xx errors. Also retries thinking-only (empty visible) responses
@@ -113,10 +113,11 @@ API keys are available for Kiro Pro, Pro+, Pro Max, and Power subscribers. On gr
 | `-model-discovery`         | `true`                    | Fetch Kiro's model catalog at startup                                                            |
 | `-keepalive-interval`      | `15s`                     | SSE idle keep-alive interval (0 = disabled)                                                      |
 | `-response-header-timeout` | `30s`                     | Max wait for Kiro response headers (0 = no limit, otherwise >= 1s)                               |
-| `-web-search-provider`     | (none)                    | Run `web_search_20250305` proxy-side via `brave`, `tavily`, `exa` or `custom`; empty disables it |
-| `-web-search-api-key`      | (none)                    | API key for the search provider                                                                  |
+| `-web-search-provider`     | (none)                    | Run `web_search_20250305` via `kiro-cli`, `brave`, `tavily`, `exa` or `custom`; empty disables it |
+| `-web-search-api-key`      | (none)                    | API key for Brave, Tavily, Exa or custom; not needed by `kiro-cli`                                |
 | `-web-search-url`          | (none)                    | Endpoint for `-web-search-provider custom`                                                       |
 | `-web-search-max-results`  | `5`                       | Results per search                                                                               |
+| `-web-search-timeout`      | provider-specific         | Max wait for one search; also `KIROCC_WEB_SEARCH_TIMEOUT`                                        |
 | `-debug`                   | `false`                   | Enable debug logging                                                                             |
 | `-log-file`                | (none)                    | Write logs to file with rotation (file-only by default)                                          |
 | `-log-max-size`            | `10`                      | Max log file size in MB before rotation                                                          |
@@ -154,6 +155,7 @@ Command-line options can be overridden with environment variables.
 | `KIROCC_WEB_SEARCH_API_KEY`      | `-web-search-api-key`      |
 | `KIROCC_WEB_SEARCH_URL`          | `-web-search-url`          |
 | `KIROCC_WEB_SEARCH_MAX_RESULTS`  | `-web-search-max-results`  |
+| `KIROCC_WEB_SEARCH_TIMEOUT`     | `-web-search-timeout`      |
 | `KIROCC_DEBUG`                   | `-debug`                   |
 | `KIROCC_LOG_FILE`                | `-log-file`                |
 | `KIROCC_LOG_MAX_SIZE`            | `-log-max-size`            |
@@ -414,9 +416,9 @@ Supported query forms:
 
 ### Web Search
 
-The Kiro backend has no web search, and Claude Code's `WebSearch` is a _server-side_ tool: it sends a side query carrying `tools:[{"type":"web_search_20250305"}]` with `tool_choice` forced to it, and expects whoever answers `/v1/messages` to run the search and reply with `server_tool_use` + `web_search_tool_result` blocks. Forwarding that definition to Kiro as an ordinary function tool returns a plain `tool_use` block instead, which the client discards — so the search reports **zero results with no error**, after billing the request.
+Claude Code's `WebSearch` sends a side query carrying `tools:[{"type":"web_search_20250305"}]` with `tool_choice` forced to it, and expects whoever answers `/v1/messages` to run the search and reply with `server_tool_use` + `web_search_tool_result` blocks. The Kiro API does not implement that Anthropic server-side contract. Forwarding the definition as an ordinary function tool returns a plain `tool_use` block instead, which the client discards — so the search reports **zero results with no error**, after billing the request.
 
-kirocc runs the search itself, structured like Tool Search above:
+kirocc runs the selected provider, structured like Tool Search above:
 
 1. Client sends a `web_search_20250305` definition (optionally with `max_uses`, `allowed_domains`, `blocked_domains`)
 2. Proxy filters it out of the tools Kiro sees and injects a `web_search` tool with a real `query` parameter — a server-side definition carries no `input_schema`, so passing it through leaves the model calling the tool with an empty input and the query never arrives
@@ -430,8 +432,17 @@ kirocc runs the search itself, structured like Tool Search above:
 kirocc -web-search-provider tavily -web-search-api-key "$TAVILY_API_KEY"
 ```
 
+To use Kiro CLI's built-in web search instead, select its native provider:
+
+```bash
+kirocc -web-search-provider kiro-cli
+```
+
+This runs a headless Kiro CLI 3 session for each search and trusts only its built-in web-search tool for automatic execution. `kiro-cli` must be installed and authenticated (or provide `KIRO_API_KEY`). Queries are sent to Kiro under that CLI identity. The feature remains disabled unless a provider is named.
+
 | Provider | Endpoint               | Auth header                               |
 | -------- | ---------------------- | ----------------------------------------- |
+| `kiro-cli` | Kiro CLI native search | Kiro CLI credentials                      |
 | `brave`  | `api.search.brave.com` | `X-Subscription-Token`                    |
 | `tavily` | `api.tavily.com`       | `Authorization: Bearer`                   |
 | `exa`    | `api.exa.ai`           | `x-api-key`                               |
@@ -439,7 +450,7 @@ kirocc -web-search-provider tavily -web-search-api-key "$TAVILY_API_KEY"
 
 The `custom` provider posts `{"q": "…", "max_results": n}` and reads `{"results": [{"title", "url", "snippet"|"content"|"description", "page_age"|"age"}]}`, so an endpoint written for Claude Desktop's built-in web search server works unchanged.
 
-Queries leave the machine for a third-party API, so the feature is off unless a provider is named. With none configured, a request carrying the tool is refused with a 400 naming the flag — the failure is visible instead of silent. Clients can also drop the tool instead: `claude --disallowedTools WebSearch`.
+Search queries are sent to the selected provider (Kiro for `kiro-cli`, or the configured external service for the other providers), so the feature is off unless a provider is named. With none configured, a request carrying the tool is refused with a 400 naming the flag — the failure is visible instead of silent. Clients can also drop the tool instead: `claude --disallowedTools WebSearch`.
 
 ### Model mappings
 

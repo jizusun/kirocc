@@ -1,9 +1,10 @@
 // Package websearch emulates Anthropic's web_search_20250305 server-side tool
-// inside the proxy. Kiro has no web search of its own, so a client-supplied
-// web_search definition cannot be forwarded upstream: if it is sent as an
-// ordinary function tool, the executor model calls it and the client receives a
-// tool_use block it has no way to answer — which is how Claude Code's WebSearch
-// ends up reporting zero results without an error.
+// inside the proxy. The Kiro API does not implement Anthropic's server-side
+// web_search contract, so a client-supplied web_search definition cannot be
+// forwarded upstream: if it is sent as an ordinary function tool, the executor
+// model calls it and the client receives a tool_use block it has no way to
+// answer — which is how Claude Code's WebSearch ends up reporting zero results
+// without an error.
 //
 // Instead the definition is intercepted, the executor model is offered a
 // synthetic Kiro-side tool with a real query parameter, and the search itself
