@@ -560,6 +560,26 @@ func TestPostMessages_MethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestCORSAllowsAnthropicBrowserHeaders(t *testing.T) {
+	srv := newTestServer(t, "", nil)
+	defer srv.Close()
+
+	req, _ := http.NewRequest("OPTIONS", srv.URL+"/models", nil)
+	req.Header.Set("Origin", "tauri://localhost")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	allowed := strings.ToLower(resp.Header.Get("Access-Control-Allow-Headers"))
+	for _, h := range []string{"x-api-key", "anthropic-version", "anthropic-dangerous-direct-browser-access"} {
+		if !strings.Contains(allowed, h) {
+			t.Errorf("Access-Control-Allow-Headers %q missing %q", allowed, h)
+		}
+	}
+}
+
 func TestGetModels_UnversionedAlias(t *testing.T) {
 	srv := newTestServer(t, "", nil)
 	defer srv.Close()
@@ -592,6 +612,12 @@ func TestIsLocalhostOrigin(t *testing.T) {
 		// No port:
 		{"http://localhost", true},
 		{"http://127.0.0.1", true},
+		// Tauri webviews:
+		{"tauri://localhost", true},
+		{"http://tauri.localhost", true},
+		{"https://tauri.localhost", true},
+		{"http://tauri.localhost.evil.com", false},
+		{"http://evil-tauri.localhost", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.origin, func(t *testing.T) {

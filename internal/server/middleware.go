@@ -48,6 +48,11 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// corsAllowHeaders lists the request headers browser-based clients may send:
+// the auth headers, plus the headers the Anthropic SDK requires on direct
+// browser requests (anthropic-version, anthropic-dangerous-direct-browser-access).
+const corsAllowHeaders = "Content-Type, Authorization, X-Api-Key, Anthropic-Version, Anthropic-Dangerous-Direct-Browser-Access"
+
 // corsMiddleware adds CORS headers for localhost origins.
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +60,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 		if isLocalhostOrigin(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Headers", corsAllowHeaders)
 			w.Header().Set("Vary", "Origin")
 		}
 
@@ -81,5 +86,7 @@ func isLocalhostOrigin(origin string) bool {
 		return false
 	}
 	host := u.Hostname()
-	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+	// tauri.localhost is the webview origin of Tauri apps on Windows
+	// (tauri://localhost on macOS and Linux is already covered).
+	return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "tauri.localhost"
 }

@@ -67,6 +67,8 @@ claude
 
 `ANTHROPIC_AUTH_TOKEN` is required by Claude Code but not used for authentication by kirocc (credentials are read from Kiro CLI's DB). Any non-empty value works unless `-api-key` is set.
 
+When `-api-key` is set, clients send it as `Authorization: Bearer <key>` (Claude Code's `ANTHROPIC_AUTH_TOKEN`) or `x-api-key: <key>` (the Anthropic SDKs' default). Other Anthropic Messages API clients work too: the `X-Claude-Code-Session-Id` header is optional, and `GET /models` is also served without the `/v1` prefix.
+
 `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` makes Claude Code fetch `GET /v1/models` from kirocc and list the results in the `/model` picker under "From gateway" — including the "(1M context)" entries (see [1M context with Claude Code](#1m-context-with-claude-code)) and the GPT 5.6 models via their `claude-gpt-5.6-*` aliases (see [Model picker integration](#model-picker-integration-discovery-aliases)).
 
 > [!IMPORTANT]
