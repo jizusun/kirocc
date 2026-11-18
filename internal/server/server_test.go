@@ -560,6 +560,20 @@ func TestPostMessages_MethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestGetModels_UnversionedAlias(t *testing.T) {
+	srv := newTestServer(t, "", nil)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != 200 {
+		t.Fatalf("GET /models status = %d, want 200", resp.StatusCode)
+	}
+}
+
 func TestIsLocalhostOrigin(t *testing.T) {
 	tests := []struct {
 		origin string
